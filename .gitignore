@@ -1,0 +1,8 @@
+# binaries
+
+build
+main
+*_test
+hellomongo
+
+*.dblite

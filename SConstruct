@@ -17,7 +17,12 @@ ccflags = [
     '-std=c++11',
     '-Wall',
     '-pedantic-errors',
-    '-Wfatal-errors' # stop at the first error
+    '-Wfatal-errors', # stop at the first error
+    '-I/usr/local/include/mongocxx/v0.0',
+    '-I/usr/local/include/libmongoc-1.0',
+    '-I/usr/local/include/bsoncxx/v0.0',
+    '-I/usr/local/include/libbson-1.0',
+    '-L/usr/local/lib'
 ]
 
 cppdefines = []

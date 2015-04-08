@@ -72,17 +72,17 @@ before_script:
     - export SCONS_CONCURRENCY_FLAG="-j3"
     - export SCONS_FLAGS="--mute --ssl --use-sasl-client $GTEST_PARAMS --cxx=$CXX --cc=$CC $DEBUG $SANITIZE"
 
-    # Run lint
-    - scons $SCONS_FLAGS lint
+    # # Run lint
+    # - scons $SCONS_FLAGS lint
 
-    # Build all targets
-    - scons $SCONS_FLAGS $SCONS_CONCURRENCY_FLAG all
+    # # Build all targets
+    # - scons $SCONS_FLAGS $SCONS_CONCURRENCY_FLAG all
 
-    # Install the driver
-    - scons $SCONS_FLAGS $SCONS_CONCURRENCY_FLAG install
+    # # Install the driver
+    # - scons $SCONS_FLAGS $SCONS_CONCURRENCY_FLAG install
 
-    # Check the installation
-    - scons $SCONS_FLAGS check-install
+    # # Check the installation
+    # - scons $SCONS_FLAGS check-install
 
     # Start Mongo Orchestration
     - mongod --version
@@ -90,4 +90,4 @@ before_script:
 
 script:
     # Test the driver
-    - make test
+    - make

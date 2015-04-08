@@ -5,67 +5,89 @@ compiler:
     - clang
 
 env:
-    global:
-        - MONGO_REPO="http://repo.mongodb.com/apt/ubuntu"
-        - REPO_TYPE="precise/mongodb-enterprise/2.6 multiverse"
-        - SOURCES_LOC="/etc/apt/sources.list.d/mongodb-enterprise.list"
-        - KEY_SERVER="hkp://keyserver.ubuntu.com:80"
-        - CMAKE_VERSION="cmake-3.1.3-Linux-x86_64"
-        - CMAKE_BINARY="${CMAKE_VERSION}/bin/cmake"
+  global:
+    - MONGO_REPO="http://repo.mongodb.com/apt/ubuntu"
+    - REPO_TYPE="precise/mongodb-enterprise/2.6 multiverse"
+    - SOURCES_LOC="/etc/apt/sources.list.d/mongodb-enterprise.list"
+    - KEY_SERVER="hkp://keyserver.ubuntu.com:80"
+    - MONGOD_PARAMS="--setParameter=enableTestCommands=1"
+    - MONGOD_OPTS="--port 27999 --httpinterface --dbpath ./data --fork --logpath mongod.log ${MONGOD_PARAMS}"
+    - MONGO_ORCHESTRATION_REPO="git+git://github.com/mongodb/mongo-orchestration@master"
+  matrix:
+    - SANITIZE= DEBUG=
+    - SANITIZE= DEBUG=--dbg=on
+    - SANITIZE=--sanitize=address --llvm-symbolizer=llvm-symbolizer-3.4 DEBUG=--dbg=on
+    - SANITIZE=--sanitize=undefined DEBUG=--dbg=on
 
-    matrix:
-        - CONFIG=Release
-        - CONFIG=Debug
+matrix:
+  exclude:
+    - compiler: gcc
+      env: SANITIZE=--sanitize=undefined DEBUG=--dbg=on
 
 # Setup required repositories before installation
 before_install:
-    # Add the modern toolchain repositories (llvm repo depends on ubunut-toolchain-r + gcc)
-    - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-    - sudo add-apt-repository -y 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise-3.6 main'
-    - wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key | sudo apt-key add -
+    # GCC 4.8.1
+    - if [ "$CXX" == "g++" ]; then sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test; fi
 
-    # Get the latest CMake
-    - wget http://www.cmake.org/files/v3.1/${CMAKE_VERSION}.tar.gz
+    # Clang 3.4
+    - if [ "$CXX" == "clang++" ]; then sudo add-apt-repository -y ppa:h-rayflood/llvm; fi
+
+    # Boost 1.49
+    - sudo add-apt-repository -y ppa:jkeiren/ppa
 
     # MongoDB Enterprise Edition 2.6
     - sudo apt-key adv --keyserver ${KEY_SERVER} --recv 7F0CEB10
     - echo "deb ${MONGO_REPO} ${REPO_TYPE}" | sudo tee ${SOURCES_LOC}
 
-    # CMake
-    - sudo add-apt-repository --yes ppa:kalakris/cmake
-
     # Update all the repositories
     - sudo apt-get update -qq
 
-    # Mongo C Driver
-    - git clone -b 1.2.0-dev https://github.com/mongodb/mongo-c-driver.git
-
 install:
-    # GCC
-    - if [ "$CXX" = "g++" ]; then sudo apt-get install -qq g++-4.9; export CXX="g++-4.9"; export CC="gcc-4.9"; fi
+    # GCC 4.8.1
+    - if [ "$CXX" = "g++" ]; then sudo apt-get install -qq g++-4.8; fi
+    - if [ "$CXX" = "g++" ]; then export CXX="g++-4.8"; export CC="gcc-4.8"; fi
 
-    # Clang
-    - if [ "$CXX" == "clang++" ]; then sudo apt-get install --allow-unauthenticated -qq clang-3.6; export CXX="clang++-3.6"; export CC="clang-3.6"; fi
+    # Clang 3.4
+    - if [ "$CXX" == "clang++" ]; then sudo apt-get install --allow-unauthenticated -qq clang-3.4; fi
+    - if [ "$CXX" == "clang++" ]; then export CXX="clang++-3.4"; export CC="clang-3.4"; fi
 
-    # CMake
-    - tar -zxvf ${CMAKE_VERSION}.tar.gz -C build
+    # Install Boost 1.49 dependencies via PPA
+    - sudo apt-get install -qq
+      libboost1.49-dev
+      libboost-program-options1.49-dev
+      libboost-filesystem1.49-dev
+      libboost-thread1.49-dev
+      libboost-regex1.49-dev
 
-    # Install MongoDB Enterprise
+    # Install MongoDB Enterprise and let smoke drive
     - sudo apt-get install mongodb-enterprise-server
 
-    # Install CMake (Versions lower than 2.8.8 do not support object libraries)
-    - sudo apt-get install cmake
-
-    # Install Mongo C Driver
-    - pushd mongo-c-driver; ./autogen.sh --enable-tests=no --enable-examples=no; make; sudo make install; popd;
+    # Install Mongo Orchestration
+    - sudo pip install ${MONGO_ORCHESTRATION_REPO}
 
 before_script:
-    - $CC --version
+    # Set SCONS_FLAGS based on new $CXX and $CC
     - $CXX --version
+    - export GTEST_PARAMS="--gtest-filter=-SASL*"
+    - export SCONS_CONCURRENCY_FLAG="-j3"
+    - export SCONS_FLAGS="--mute --ssl --use-sasl-client $GTEST_PARAMS --cxx=$CXX --cc=$CC $DEBUG $SANITIZE"
 
-    # Build the driver and the tests
-    - cd build
-    - ${CMAKE_BINARY} -DCMAKE_BUILD_TYPE=$CONFIG ..
+    # Run lint
+    - scons $SCONS_FLAGS lint
+
+    # Build all targets
+    - scons $SCONS_FLAGS $SCONS_CONCURRENCY_FLAG all
+
+    # Install the driver
+    - scons $SCONS_FLAGS $SCONS_CONCURRENCY_FLAG install
+
+    # Check the installation
+    - scons $SCONS_FLAGS check-install
+
+    # Start Mongo Orchestration
+    - mongod --version
+    - sudo mongo-orchestration start
 
 script:
-    - make
+    # Test the driver
+    - make test
